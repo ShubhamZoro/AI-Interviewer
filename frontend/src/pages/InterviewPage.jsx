@@ -1,19 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import WaveformVisualizer from '../components/WaveformVisualizer'
 import MessageBubble from '../components/MessageBubble'
+import CameraMonitor from '../components/CameraMonitor'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const MAX_QUESTIONS = 7
 
 export default function InterviewPage({ initialData, onEnd }) {
-    const { session_id, question, question_index, role, experience, interview_type } = initialData
+    const { session_id, question, question_index, role, experience, interview_type, num_questions = 5 } = initialData
+    const MAX_QUESTIONS = num_questions
 
     const [status, setStatus] = useState('ai_speaking')
     const [messages, setMessages] = useState([{ role: 'ai', text: question }])
     const [questionCount, setQuestionCount] = useState(1)
     const [error, setError] = useState('')
     const [endingInterview, setEndingInterview] = useState(false)
-    const [analyser, setAnalyser] = useState(null)   // only set during mic recording
+    const [analyser, setAnalyser] = useState(null)
+    const [gazeWarnings, setGazeWarnings] = useState(0)   // flagged look-away count
 
     // Audio queue (ordered playback of base64-decoded blobs)
     const audioQueueRef = useRef([])    // {order, url}[]
@@ -250,7 +252,7 @@ export default function InterviewPage({ initialData, onEnd }) {
             const res = await fetch(`${API_URL}/api/end-interview`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id }),
+                body: JSON.stringify({ session_id, gaze_warnings: gazeWarnings }),
             })
             if (!res.ok) throw new Error('Failed to generate feedback')
             onEnd(await res.json())
@@ -259,7 +261,7 @@ export default function InterviewPage({ initialData, onEnd }) {
             setStatus('idle')
             setEndingInterview(false)
         }
-    }, [session_id, onEnd])
+    }, [session_id, onEnd, gazeWarnings])
 
     // ── UI ──────────────────────────────────────────────────────────
 
@@ -280,26 +282,35 @@ export default function InterviewPage({ initialData, onEnd }) {
                     padding: '13px 20px', marginBottom: 12,
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14,
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {/* Left: role info */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 20 }}>🤖</span>
-                        <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{role}</div>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '0.73rem' }}>
+                        <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{role}</div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.71rem' }}>
                                 {experience} · {interview_type}
+                                {gazeWarnings > 0 && (
+                                    <span style={{ marginLeft: 8, color: '#f97316', fontWeight: 600 }}>👁️ {gazeWarnings} look-away{gazeWarnings > 1 ? 's' : ''}</span>
+                                )}
                             </div>
                         </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+
+                    {/* Center: camera */}
+                    <CameraMonitor onWarning={() => setGazeWarnings(n => n + 1)} />
+
+                    {/* Right: progress + end btn */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                         <div style={{ textAlign: 'right' }}>
-                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.73rem', marginBottom: 4 }}>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', marginBottom: 4 }}>
                                 Q {questionCount} / {MAX_QUESTIONS}
                             </div>
-                            <div className="progress-bar-track" style={{ width: 96 }}>
+                            <div className="progress-bar-track" style={{ width: 80 }}>
                                 <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
                             </div>
                         </div>
                         <button className="btn btn-secondary"
-                            style={{ padding: '7px 13px', fontSize: '0.77rem' }}
+                            style={{ padding: '7px 11px', fontSize: '0.75rem' }}
                             onClick={endInterviewFn}
                             disabled={endingInterview || status === 'recording' || questionCount < 2}>
                             {endingInterview

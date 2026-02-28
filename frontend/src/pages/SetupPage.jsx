@@ -31,6 +31,7 @@ export default function SetupPage({ onStart }) {
     const [jobDescription, setJobDescription] = useState('')
     const [resumeFile, setResumeFile] = useState(null)
     const [showOptional, setShowOptional] = useState(false)
+    const [numQuestions, setNumQuestions] = useState(5)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const fileInputRef = useRef(null)
@@ -53,6 +54,7 @@ export default function SetupPage({ onStart }) {
             formData.append('experience', experience)
             formData.append('interview_type', interviewType)
             formData.append('job_description', jobDescription || '')
+            formData.append('num_questions', String(numQuestions))
             if (resumeFile) formData.append('resume', resumeFile)
 
             const res = await fetch(`${API_URL}/api/start-interview`, {
@@ -149,6 +151,34 @@ export default function SetupPage({ onStart }) {
                             </button>
                         ))}
                     </div>
+                </div>
+
+                {/* Number of Questions */}
+                <div className="form-group" style={{ marginBottom: 20 }}>
+                    <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Number of Questions</span>
+                        <span style={{
+                            color: 'var(--accent-secondary)', fontWeight: 700, fontSize: '0.92rem',
+                            background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(167,139,250,0.3)',
+                            padding: '2px 11px', borderRadius: 99,
+                        }}>{numQuestions}</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', minWidth: 10 }}>1</span>
+                        <input
+                            type="range" min={1} max={15} step={1}
+                            value={numQuestions}
+                            onChange={e => setNumQuestions(Number(e.target.value))}
+                            style={{
+                                flex: 1, accentColor: '#7c3aed', height: 4, cursor: 'pointer',
+                                appearance: 'auto',
+                            }}
+                        />
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', minWidth: 16 }}>15</span>
+                    </div>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: 5, marginBottom: 0 }}>
+                        First question is always "Introduce yourself". Max 15.
+                    </p>
                 </div>
 
                 {/* Optional Context Toggle */}
@@ -259,7 +289,7 @@ export default function SetupPage({ onStart }) {
                 </button>
 
                 <p style={{ textAlign: 'center', marginTop: 14, color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                    🎙️ Allow microphone access · ~7 questions · ~10 minutes
+                    🎙️ Allow mic &amp; camera · {numQuestions} questions · always starts with self-intro
                 </p>
             </div>
         </div>

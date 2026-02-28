@@ -70,6 +70,7 @@ The candidate has {experience} of experience.
 {jd_section}
 Rules:
 - Ask ONE focused question at a time. Keep it to 2-3 sentences max.
+- Your VERY FIRST question must always ask the candidate to introduce themselves (e.g. "Tell me about yourself" or "Please start with a brief introduction"). This is mandatory.
 - Base follow-up questions on what the candidate just said or can ask questions based on their resume or job description.
 - Match difficulty to their experience level.
 - Be warm, professional, and encouraging.
@@ -115,6 +116,7 @@ async def start_interview(
     interview_type: str = Form(...),
     job_description: str = Form(""),
     resume: Optional[UploadFile] = File(None),
+    num_questions: int = Form(5),
 ):
     session_id = str(uuid.uuid4())
 
@@ -128,7 +130,7 @@ async def start_interview(
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Start the interview. I'm applying for {role}."},
+        {"role": "user", "content": f"Start the interview. I'm applying for {role}. Please begin by asking me to introduce myself."},
     ]
 
     # Use sync client for first question (simpler, still fast with gpt-4o-mini)
@@ -155,6 +157,7 @@ async def start_interview(
         "question_count": 1,
         "current_question": first_question,
         "first_audio": audio_bytes,
+        "max_questions": max(1, min(15, num_questions)),
     }
 
     return JSONResponse({
@@ -162,6 +165,7 @@ async def start_interview(
         "question": first_question,
         "question_index": 0,
         "question_count": 1,
+        "num_questions": max(1, min(15, num_questions)),
     })
 
 
@@ -219,7 +223,7 @@ async def respond_stream(req: RespondRequest):
     })
     session["messages"].append({"role": "user", "content": transcript})
 
-    if session["question_count"] >= MAX_QUESTIONS:
+    if session["question_count"] >= session["max_questions"]:
         async def done_gen():
             yield f"data: {json.dumps({'type': 'done_interview'})}\n\n"
         return StreamingResponse(
@@ -312,10 +316,12 @@ async def respond_stream(req: RespondRequest):
 # ── End Interview ─────────────────────────────────────────────────
 class EndInterviewRequest(BaseModel):
     session_id: str
+    gaze_warnings: int = 0  # look-away flags from frontend camera monitor
 
 @app.post("/api/end-interview")
 async def end_interview_route(req: EndInterviewRequest):
-    session_id = req.session_id
+    session_id    = req.session_id
+    gaze_warnings = req.gaze_warnings
     session = sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -328,7 +334,11 @@ async def end_interview_route(req: EndInterviewRequest):
     for i, pair in enumerate(qa_pairs, 1):
         transcript_text += f"\nQ{i}: {pair['question']}\nA{i}: {pair['answer']}\n"
 
-    feedback_prompt = f"""You are evaluating a {session['interview_type']} interview for a {session['role']} position (candidate has {session['experience']} experience).
+    gaze_note = ""
+    if gaze_warnings > 0:
+        gaze_note = f"\nEye contact note: The candidate looked away from the camera {gaze_warnings} time(s) during the interview. Mention this briefly in the summary if it seems relevant to professionalism."
+
+    feedback_prompt = f"""You are evaluating a {session['interview_type']} interview for a {session['role']} position (candidate has {session['experience']} experience).{gaze_note}
 
 Interview transcript:
 {transcript_text}
