@@ -22,7 +22,7 @@ app = FastAPI(title="AI Interviewer API", version="3.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000",
-                   "http://localhost:5174", "http://localhost:5175"],
+                   "http://localhost:5174", "http://localhost:5175",f'{os.getenv("FRONTEND_URL")}'],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
