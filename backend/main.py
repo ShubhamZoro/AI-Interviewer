@@ -345,8 +345,8 @@ Return ONLY valid JSON (no markdown) in this exact schema:
       "question": "<full question text>",
       "answer": "<candidate's full answer, do not truncate>",
       "score": <1-10>,
-      "feedback": "<specific constructive feedback on what they said>",
-      "ideal_answer": "<key points and concepts a strong answer would include>"
+      "feedback": "<specific constructive feedback referencing what the candidate said>",
+      "ideal_answer": "<write a full, well-structured model answer to this question as if you were the ideal candidate — include concrete examples, specific technologies or concepts where relevant, and build on anything correct the candidate said. 3-5 sentences.>"
     }}
   ],
   "recommendation": "<Strong Yes|Yes|Maybe|No>",

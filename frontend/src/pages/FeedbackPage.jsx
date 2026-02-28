@@ -179,7 +179,7 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                                     </div>
                                                 )}
 
-                                                {/* Ideal Answer */}
+                                                {/* Model Answer */}
                                                 {qs.ideal_answer && (
                                                     <div style={{
                                                         background: 'rgba(167,139,250,0.08)',
@@ -187,9 +187,9 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                                         borderRadius: 10, padding: '12px 14px',
                                                     }}>
                                                         <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent-secondary)', marginBottom: 6 }}>
-                                                            ⭐ What a Strong Answer Includes
+                                                            📝 Model Answer
                                                         </div>
-                                                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
+                                                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
                                                             {qs.ideal_answer}
                                                         </p>
                                                     </div>
