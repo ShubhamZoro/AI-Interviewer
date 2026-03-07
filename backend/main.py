@@ -8,12 +8,13 @@ import tempfile
 import io
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import OpenAI, AsyncOpenAI
+from supabase import create_client, Client
 
 load_dotenv()
 
@@ -30,6 +31,11 @@ app.add_middleware(
 
 client       = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 async_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ─── Supabase client (service role — server-side only) ────────────
+_supa_url = os.getenv("SUPABASE_URL", "")
+_supa_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+supabase_client: Client | None = create_client(_supa_url, _supa_key) if _supa_url and _supa_key else None
 
 sessions: dict[str, dict] = {}
 MAX_QUESTIONS = 5
@@ -64,22 +70,28 @@ async def extract_resume_text(upload: UploadFile) -> str:
 
 
 # ─── System prompt builder ────────────────────────────────────────
-SYSTEM_TEMPLATE = """You are an expert interviewer conducting a {interview_type} interview for a {role} position.
+SYSTEM_TEMPLATE = """You are a senior interviewer at a top tech company conducting a {interview_type} interview for a {role} position.
 The candidate has {experience} of experience.
 {resume_section}
 {jd_section}
-Rules:
-- Ask ONE focused question at a time. Keep it to 2-3 sentences max.
-- Your VERY FIRST question must always ask the candidate to introduce themselves (e.g. "Tell me about yourself" or "Please start with a brief introduction"). This is mandatory.
-- Base follow-up questions on what the candidate just said or can ask questions based on their resume or job description.
-- Match difficulty to their experience level.
-- Be warm, professional, and encouraging.
-- Do NOT evaluate their answer verbally — just ask the next question naturally.
+STRICT RULES — follow every one without exception:
+- Ask ONE direct, specific question at a time. 1-2 sentences max.
+- NEVER ask meta-questions like "What topic would you like to cover?", "What area should we focus on?", or anything that asks the candidate to choose the direction. YOU choose the next question.
+- NEVER ask permission to ask a question. Just ask it.
+- Your VERY FIRST turn must be an introduction prompt: "Please start with a brief introduction about yourself and your background."
+- After the intro, ask concrete, targeted questions specific to the {role} role and {experience} experience level. Examples of good questions:
+  * For a backend developer: "How would you design a rate-limiting system for a high-traffic REST API?"
+  * For a frontend developer: "Explain how React's reconciliation algorithm works and when you'd use useMemo."
+  * For behavioral: "Tell me about a time you had to optimize a slow database query. What was your approach?"
+- Match difficulty precisely to {experience}: junior = fundamentals, mid = design trade-offs, senior = architecture + leadership.
+- Base follow-up questions on exactly what the candidate just said — reference their specific words.
+- Do NOT evaluate or score their answer out loud. Just acknowledge briefly and ask the next question.
+- Be warm and professional but stay focused — this is a real interview.
 
-Interview type:
-- behavioral: STAR-method questions about past experiences
-- technical: technical concepts, system design, problem-solving
-- mixed: balanced mix of both"""
+Interview type context:
+- behavioral: STAR-method questions about real past experiences and decisions
+- technical: specific technical concepts, system design, debugging scenarios, code reasoning
+- mixed: alternate between behavioral and technical, keeping it balanced"""
 
 
 def build_system_prompt(role, experience, interview_type,
@@ -380,3 +392,56 @@ Return ONLY valid JSON (no markdown) in this exact schema:
 async def delete_session(session_id: str):
     sessions.pop(session_id, None)
     return {"message": "ok"}
+
+
+# ── Save Report ───────────────────────────────────────────────────
+class SaveReportRequest(BaseModel):
+    role: str
+    experience: str
+    interview_type: str
+    overall_score: int
+    grade: str
+    recommendation: str
+    summary: str = ""
+    strengths: list = []
+    improvements: list = []
+    question_scores: list = []
+    recommendation_reason: str = ""
+    gaze_warnings: int = 0
+
+@app.post("/api/save-report")
+async def save_report(
+    body: SaveReportRequest,
+    authorization: str = Header(None),
+):
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    jwt = authorization.split(" ", 1)[1]
+    try:
+        user_resp = supabase_client.auth.get_user(jwt)
+        user_id = user_resp.user.id
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+    try:
+        result = supabase_client.table("interview_reports").insert({
+            "user_id":              user_id,
+            "role":                 body.role,
+            "experience":           body.experience,
+            "interview_type":       body.interview_type,
+            "overall_score":        body.overall_score,
+            "grade":                body.grade,
+            "recommendation":       body.recommendation,
+            "summary":              body.summary,
+            "strengths":            body.strengths,
+            "improvements":         body.improvements,
+            "question_scores":      body.question_scores,
+            "recommendation_reason": body.recommendation_reason,
+            "gaze_warnings":        body.gaze_warnings,
+        }).execute()
+        return JSONResponse({"id": result.data[0]["id"]})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

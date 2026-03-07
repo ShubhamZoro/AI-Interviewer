@@ -1,16 +1,18 @@
 # 🤖 AI Interviewer
 
-An AI-powered mock interview platform — the AI speaks questions aloud, monitors your camera for eye contact, listens to your answers via voice, and delivers a rich feedback report at the end.
+An AI-powered mock interview platform — sign in with Google, get interviewed by AI (voice in, voice out, camera gaze monitoring), and have your reports saved automatically for review anytime.
 
 ## ✨ Features
 
 | Feature | Details |
 |---------|---------|
+| 🔐 **Google Auth** | Sign in with Google via Supabase OAuth — sessions persist across visits |
+| 📋 **Interview History** | All past reports saved to your account, viewable anytime |
 | 🎙️ **Voice Recording** | Press mic, speak your answer, press stop |
-| 🔊 **Streaming AI Voice** | TTS starts playing sentence-by-sentence as text streams in (no waiting for full response) |
+| 🔊 **Streaming AI Voice** | TTS plays sentence-by-sentence as text streams in (no waiting) |
 | 📷 **Camera Gaze Monitor** | Live webcam with TF.js / MediaPipe face detection — flags if you look away |
 | 💬 **Chat Transcript** | Real-time streaming chat with blinking cursor while AI types |
-| 🙋 **Always Intro First** | Every interview opens with "Tell me about yourself" |
+| 🙋 **Always Intro First** | Every interview opens with a self-introduction prompt |
 | 📄 **Resume Upload** | Upload PDF or .txt — AI tailors questions to your experience |
 | 📋 **Job Description** | Paste the JD — AI aligns questions to the role requirements |
 | 🔢 **Custom Question Count** | Slider (1–15) to choose how many questions you want |
@@ -26,6 +28,7 @@ An AI-powered mock interview platform — the AI speaks questions aloud, monitor
 |-------|-----------|
 | Frontend | React + Vite |
 | Backend | FastAPI (Python) |
+| Auth & DB | Supabase (Google OAuth + Postgres with RLS) |
 | STT | OpenAI Whisper-1 |
 | TTS | OpenAI TTS-1 (`nova` voice) — streamed inline in SSE |
 | AI (Questions) | GPT-4o-mini (fast streaming) |
@@ -38,48 +41,76 @@ An AI-powered mock interview platform — the AI speaks questions aloud, monitor
 ```
 AI_Interviewer/
 ├── backend/
-│   ├── main.py              # FastAPI v3 — streaming SSE + concurrent TTS + resume parsing
-│   ├── requirements.txt     # Python deps (includes pypdf)
-│   └── .env                 # OPENAI_API_KEY (create this)
+│   ├── main.py              # FastAPI — streaming SSE, concurrent TTS, resume parsing, save-report
+│   ├── requirements.txt     # Python deps
+│   └── .env                 # OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 └── frontend/
     ├── src/
+    │   ├── lib/
+    │   │   └── supabaseClient.js      # Supabase singleton
+    │   ├── context/
+    │   │   └── AuthContext.jsx        # Google OAuth, session state, signIn/signOut
     │   ├── pages/
-    │   │   ├── SetupPage.jsx      # Role, experience, type, question count, resume/JD
-    │   │   ├── InterviewPage.jsx  # Recording, streaming, camera monitor
-    │   │   └── FeedbackPage.jsx   # Accordion breakdown with answer + model answer
+    │   │   ├── LoginPage.jsx          # Full-screen Google sign-in
+    │   │   ├── SetupPage.jsx          # Role, experience, type, question count, resume/JD
+    │   │   ├── InterviewPage.jsx      # Recording, streaming, camera monitor
+    │   │   ├── FeedbackPage.jsx       # Accordion breakdown + auto-saves to Supabase
+    │   │   └── ReportsPage.jsx        # Past interview history
     │   ├── components/
-    │   │   ├── CameraMonitor.jsx  # Webcam + TF.js gaze detection
+    │   │   ├── CameraMonitor.jsx
     │   │   ├── WaveformVisualizer.jsx
     │   │   └── MessageBubble.jsx
-    │   ├── App.jsx
+    │   ├── App.jsx                    # Auth guard + sticky header
     │   ├── main.jsx
     │   └── index.css
-    └── .env                 # VITE_API_URL
+    └── .env                 # VITE_API_URL, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
 ```
 
 ## 🚀 Quick Start
 
-### 1. Backend
+### 1. Supabase Setup (one-time)
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Enable **Google OAuth**: Dashboard → Authentication → Providers → Google
+3. Add `http://localhost:5173` to **Allowed Redirect URLs**
+4. Run this SQL in **Supabase → SQL Editor**:
+
+```sql
+create table public.interview_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  role text not null, experience text not null, interview_type text not null,
+  overall_score int not null, grade text not null, recommendation text not null,
+  summary text, strengths jsonb, improvements jsonb, question_scores jsonb,
+  recommendation_reason text, gaze_warnings int default 0,
+  created_at timestamptz default now()
+);
+alter table public.interview_reports enable row level security;
+create policy "Users can insert own reports" on public.interview_reports
+  for insert with check (auth.uid() = user_id);
+create policy "Users can view own reports" on public.interview_reports
+  for select using (auth.uid() = user_id);
+```
+
+### 2. Backend
 
 ```bash
 cd backend
-
-# Copy env file and add your key
-cp .env.example .env
-# Edit .env → set OPENAI_API_KEY=sk-...
-
-# Create virtual env and install deps
 python -m venv venv
 venv\Scripts\activate        # Windows
-# source venv/bin/activate  # macOS/Linux
-
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-Backend: http://localhost:8000 · Swagger: http://localhost:8000/docs
+**`backend/.env`:**
+```
+OPENAI_API_KEY=sk-...
+FRONTEND_URL=http://localhost:5173
+SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
 
-### 2. Frontend
+### 3. Frontend
 
 ```bash
 cd frontend
@@ -87,7 +118,12 @@ npm install
 npm run dev
 ```
 
-Frontend: http://localhost:5173
+**`frontend/.env`:**
+```
+VITE_API_URL=http://localhost:8000
+VITE_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
 
 > **Browser permissions:** Allow **microphone** and **camera** when prompted. Camera is used for gaze monitoring only — no video is sent to the server.
 
@@ -98,45 +134,43 @@ Frontend: http://localhost:5173
 | POST | `/api/start-interview` | Start session (FormData: role, experience, type, num_questions, resume?, job_description?) |
 | POST | `/api/transcribe` | Audio blob → transcript via Whisper |
 | POST | `/api/respond-stream` | Answer → streaming SSE with text tokens + inline base64 TTS audio |
-| GET | `/api/tts/{session_id}/{index}` | Cached TTS for the first question |
+| GET | `/api/tts/{session_id}/{index}` | Cached TTS for first question |
 | POST | `/api/end-interview` | Generate GPT-4o feedback JSON with scores + model answers |
 | DELETE | `/api/session/{session_id}` | Clean up session |
-
-## ⚙️ Environment Variables
-
-### Backend (`backend/.env`)
-```
-OPENAI_API_KEY=your-openai-api-key
-```
-
-### Frontend (`frontend/.env`)
-```
-VITE_API_URL=http://localhost:8000
-```
 
 ## 🏗️ How It Works
 
 ```
-Setup Page
-  │  role + experience + interview type + question count
-  │  optional: resume (PDF/txt) + job description
+Google Sign-In (Supabase OAuth)
   ▼
-POST /api/start-interview  →  GPT-4o-mini generates intro question
-                           →  TTS pre-generated and cached
+Setup Page — role, experience, interview type, question count, resume/JD
+  ▼
+POST /api/start-interview  →  GPT-4o-mini generates intro question + pre-generates TTS
   ▼
 Interview Loop
-  │  User clicks 🎙️ → MediaRecorder captures audio
-  │  POST /api/transcribe → Whisper → transcript
+  │  🎙️ → MediaRecorder → POST /api/transcribe → Whisper transcript
   │  POST /api/respond-stream (SSE)
-  │    ├── {type:"text"} events → live streaming bubble
-  │    ├── asyncio.create_task(_fetch_tts(sentence)) → runs concurrently
-  │    └── {type:"audio"} events → base64 MP3 played inline (no extra fetch!)
-  │  Camera: TF.js checks gaze every 1.5s → warns if face not detected
+  │    ├── {type:"text"}  → live streaming chat bubble
+  │    ├── asyncio TTS tasks run concurrently per sentence
+  │    └── {type:"audio"} → base64 MP3 played inline
+  │  Camera: TF.js checks gaze every 1.5s
   ▼
 POST /api/end-interview → GPT-4o evaluates full transcript
   ▼
-Feedback Page (accordion per question)
-  ├── 👤 Your Answer (full, untruncated)
-  ├── 💬 Feedback (specific to what you said)
-  └── 📝 Model Answer (complete example with concrete details)
+Feedback Page
+  ├── Auto-saves report to Supabase (direct client insert, RLS protected)
+  ├── ✅ Saved badge
+  └── Accordion: score · grade · strengths · Q&A breakdown · model answers
+  ▼
+📋 History Page — view all past reports from your account
+```
+
+## 🔐 Auth Flow
+
+```
+User opens app
+  ├── No session → LoginPage → "Continue with Google" → Supabase OAuth
+  │                                                     └── redirect back → session stored
+  └── Session exists → App with sticky header (avatar + History + Sign Out)
+          └── Feedback Page auto-saves → History Page fetches all reports (RLS protected)
 ```

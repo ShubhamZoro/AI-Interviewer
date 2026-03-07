@@ -1,17 +1,72 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabaseClient'
 
-export default function FeedbackPage({ feedback, onRestart }) {
+export default function FeedbackPage({ feedback, onRestart, onViewHistory }) {
+    const { session } = useAuth()
     const {
         overall_score = 0, grade = 'N/A', summary = '',
         strengths = [], improvements = [],
         question_scores = [],
         recommendation = '', recommendation_reason = '',
+        role = '', experience = '', interview_type = '', gaze_warnings = 0,
     } = feedback || {}
 
     const [openIdx, setOpenIdx] = useState(null)
 
+    // Report save state: 'saving' | 'saved' | 'error' | 'idle'
+    const [saveStatus, setSaveStatus] = useState('idle')
+
+    useEffect(() => {
+        if (!session?.user?.id || !feedback) return
+        setSaveStatus('saving')
+
+        supabase
+            .from('interview_reports')
+            .insert({
+                user_id: session.user.id,
+                role,
+                experience,
+                interview_type,
+                overall_score,
+                grade,
+                recommendation,
+                summary,
+                strengths,
+                improvements,
+                question_scores,
+                recommendation_reason,
+                gaze_warnings,
+            })
+            .then(({ error }) => {
+                setSaveStatus(error ? 'error' : 'saved')
+                if (error) console.error('Save report error:', error.message)
+            })
+    }, []) // run once on mount
+
     const gradeColor = { A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#f97316', F: '#ef4444' }[grade] || '#9ca3af'
     const recColor = { 'Strong Yes': '#10b981', 'Yes': '#3b82f6', 'Maybe': '#f59e0b', 'No': '#ef4444' }[recommendation] || '#9ca3af'
+
+    // Save status badge
+    const SaveBadge = () => {
+        if (saveStatus === 'idle') return null
+        const cfg = {
+            saving: { bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.3)', color: '#a78bfa', text: 'Saving report…', icon: '⏳' },
+            saved: { bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.3)', color: '#10b981', text: 'Report saved', icon: '✅' },
+            error: { bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.3)', color: '#ef4444', text: 'Save failed', icon: '❌' },
+        }[saveStatus]
+        return (
+            <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '4px 12px', borderRadius: 99,
+                background: cfg.bg, border: `1px solid ${cfg.border}`,
+                color: cfg.color, fontSize: '0.78rem', fontWeight: 600,
+            }}>
+                {saveStatus === 'saving' ? <span className="spinner" style={{ width: 12, height: 12, borderWidth: 2 }} /> : cfg.icon}
+                {cfg.text}
+            </span>
+        )
+    }
 
     return (
         <div className="app-container" style={{ padding: '24px 16px' }}>
@@ -25,9 +80,10 @@ export default function FeedbackPage({ feedback, onRestart }) {
                         background: 'linear-gradient(135deg, #f1f0ff, #a78bfa)',
                         WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 6,
                     }}>Interview Complete!</h1>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.93rem' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.93rem', marginBottom: 10 }}>
                         Here's your full performance report
                     </p>
+                    <SaveBadge />
                 </div>
 
                 {/* Score card */}
@@ -104,7 +160,6 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                         border: `1px solid ${open ? 'rgba(167,139,250,0.2)' : 'var(--border)'}`,
                                         borderRadius: 12, overflow: 'hidden', transition: 'var(--transition)',
                                     }}>
-                                        {/* Row header — always visible */}
                                         <button
                                             onClick={() => setOpenIdx(open ? null : i)}
                                             style={{
@@ -113,7 +168,6 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                                 display: 'flex', alignItems: 'center', gap: 12,
                                             }}
                                         >
-                                            {/* Score badge */}
                                             <span style={{
                                                 flexShrink: 0, fontSize: '0.8rem', fontWeight: 800,
                                                 color: col, background: `${col}18`,
@@ -121,7 +175,6 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                                 padding: '2px 9px', borderRadius: 99,
                                             }}>{qs.score}/10</span>
 
-                                            {/* Question text */}
                                             <span style={{
                                                 flex: 1, textAlign: 'left', fontSize: '0.88rem',
                                                 color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.4,
@@ -135,7 +188,6 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                             </span>
                                         </button>
 
-                                        {/* Score bar */}
                                         <div style={{ padding: '0 16px 4px' }}>
                                             <div className="progress-bar-track">
                                                 <div className="progress-bar-fill" style={{
@@ -145,11 +197,8 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                             </div>
                                         </div>
 
-                                        {/* Expanded detail */}
                                         {open && (
                                             <div className="animate-fade-in" style={{ padding: '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-                                                {/* Your answer */}
                                                 <div style={{
                                                     background: 'rgba(255,255,255,0.03)',
                                                     border: '1px solid rgba(255,255,255,0.07)',
@@ -163,11 +212,9 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                                     </p>
                                                 </div>
 
-                                                {/* AI Feedback */}
                                                 {qs.feedback && (
                                                     <div style={{
-                                                        background: `${col}0e`,
-                                                        border: `1px solid ${col}28`,
+                                                        background: `${col}0e`, border: `1px solid ${col}28`,
                                                         borderRadius: 10, padding: '12px 14px',
                                                     }}>
                                                         <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: col, marginBottom: 6 }}>
@@ -179,7 +226,6 @@ export default function FeedbackPage({ feedback, onRestart }) {
                                                     </div>
                                                 )}
 
-                                                {/* Model Answer */}
                                                 {qs.ideal_answer && (
                                                     <div style={{
                                                         background: 'rgba(167,139,250,0.08)',
@@ -204,9 +250,21 @@ export default function FeedbackPage({ feedback, onRestart }) {
                 )}
 
                 {/* CTA */}
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }} className="animate-fade-up">
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }} className="animate-fade-up">
                     <button className="btn btn-primary btn-lg" onClick={onRestart} id="restart-btn">
                         🔄 Practice Again
+                    </button>
+                    <button
+                        id="view-history-btn"
+                        onClick={onViewHistory}
+                        className="btn btn-lg"
+                        style={{
+                            background: 'rgba(167,139,250,0.1)',
+                            border: '1px solid rgba(167,139,250,0.3)',
+                            color: '#a78bfa',
+                        }}
+                    >
+                        📋 View History
                     </button>
                 </div>
                 <p style={{ textAlign: 'center', marginTop: 14, color: 'var(--text-muted)', fontSize: '0.76rem' }}>
