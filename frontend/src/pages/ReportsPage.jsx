@@ -2,12 +2,15 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
 export default function ReportsPage({ onBack }) {
     const { session } = useAuth()
     const [reports, setReports] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [openIdx, setOpenIdx] = useState(null)
+    const [deletingId, setDeletingId] = useState(null)
 
     useEffect(() => {
         async function fetchReports() {
@@ -25,6 +28,27 @@ export default function ReportsPage({ onBack }) {
 
     const gradeColor = g => ({ A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#f97316', F: '#ef4444' }[g] || '#9ca3af')
     const recColor = r => ({ 'Strong Yes': '#10b981', 'Yes': '#3b82f6', 'Maybe': '#f59e0b', 'No': '#ef4444' }[r] || '#9ca3af')
+
+    const deleteReport = async (id) => {
+        if (!window.confirm('Delete this report? This cannot be undone.')) return
+        setDeletingId(id)
+        try {
+            const token = session?.access_token
+            const res = await fetch(`${API_URL}/api/report/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            })
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                alert('Failed to delete: ' + (err.detail || res.statusText))
+            } else {
+                setReports(prev => prev.filter(r => r.id !== id))
+            }
+        } catch (e) {
+            alert('Failed to delete: ' + e.message)
+        }
+        setDeletingId(null)
+    }
 
     const formatDate = iso => {
         const d = new Date(iso)
@@ -97,59 +121,84 @@ export default function ReportsPage({ onBack }) {
 
                         return (
                             <div key={r.id} className="glass-card animate-fade-up" style={{
-                                overflow: 'hidden', border: open ? '1px solid rgba(167,139,250,0.25)' : '1px solid var(--border)',
+                                overflow: 'hidden',
+                                border: open ? '1px solid rgba(167,139,250,0.25)' : '1px solid var(--border)',
                                 animationDelay: `${i * 0.04}s`,
                             }}>
-                                {/* Card header */}
-                                <button
-                                    id={`report-toggle-${i}`}
-                                    onClick={() => setOpenIdx(open ? null : i)}
-                                    style={{
-                                        width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-                                        padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-                                    }}
-                                >
-                                    {/* Grade badge */}
-                                    <span style={{
-                                        flexShrink: 0, width: 44, height: 44, borderRadius: '50%',
-                                        background: `${gc}18`, border: `2px solid ${gc}55`,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '1.1rem', fontWeight: 900, color: gc,
-                                    }}>{r.grade}</span>
+                                {/* Card header row */}
+                                <div style={{ display: 'flex', alignItems: 'center' }}>
 
-                                    {/* Main info */}
-                                    <div style={{ flex: 1, textAlign: 'left', minWidth: 160 }}>
-                                        <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: 3 }}>
-                                            {r.role}
-                                        </div>
-                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                                            {r.interview_type} · {r.experience} · {formatDate(r.created_at)}
-                                        </div>
-                                    </div>
+                                    {/* Expand/collapse area */}
+                                    <button
+                                        id={`report-toggle-${i}`}
+                                        onClick={() => setOpenIdx(open ? null : i)}
+                                        style={{
+                                            flex: 1, minWidth: 0, background: 'none', border: 'none', cursor: 'pointer',
+                                            padding: '18px 0 18px 22px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+                                        }}
+                                    >
+                                        {/* Grade badge */}
+                                        <span style={{
+                                            flexShrink: 0, width: 44, height: 44, borderRadius: '50%',
+                                            background: `${gc}18`, border: `2px solid ${gc}55`,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontSize: '1.1rem', fontWeight: 900, color: gc,
+                                        }}>{r.grade}</span>
 
-                                    {/* Score */}
-                                    <div style={{
-                                        textAlign: 'right', flexShrink: 0,
-                                        background: 'linear-gradient(135deg,rgba(124,58,237,0.12),rgba(167,139,250,0.06))',
-                                        border: '1px solid rgba(167,139,250,0.15)', borderRadius: 10, padding: '6px 14px',
-                                    }}>
+                                        {/* Main info */}
+                                        <div style={{ flex: 1, textAlign: 'left', minWidth: 120 }}>
+                                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: 3 }}>
+                                                {r.role}
+                                            </div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                                {r.interview_type} · {r.experience} · {formatDate(r.created_at)}
+                                            </div>
+                                        </div>
+
+                                        {/* Score */}
                                         <div style={{
-                                            fontSize: '1.4rem', fontWeight: 800,
-                                            background: 'linear-gradient(135deg,#f1f0ff,#a78bfa)',
-                                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                                        }}>{r.overall_score}</div>
-                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>/ 100</div>
-                                    </div>
+                                            textAlign: 'right', flexShrink: 0,
+                                            background: 'linear-gradient(135deg,rgba(124,58,237,0.12),rgba(167,139,250,0.06))',
+                                            border: '1px solid rgba(167,139,250,0.15)', borderRadius: 10, padding: '6px 14px',
+                                        }}>
+                                            <div style={{
+                                                fontSize: '1.4rem', fontWeight: 800,
+                                                background: 'linear-gradient(135deg,#f1f0ff,#a78bfa)',
+                                                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                                            }}>{r.overall_score}</div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>/ 100</div>
+                                        </div>
 
-                                    {/* Recommendation pill */}
-                                    <span style={{
-                                        flexShrink: 0, padding: '4px 12px', borderRadius: 99,
-                                        background: `${rc}18`, border: `1px solid ${rc}44`,
-                                        color: rc, fontSize: '0.76rem', fontWeight: 700,
-                                    }}>{r.recommendation}</span>
+                                        {/* Recommendation pill */}
+                                        <span style={{
+                                            flexShrink: 0, padding: '4px 12px', borderRadius: 99,
+                                            background: `${rc}18`, border: `1px solid ${rc}44`,
+                                            color: rc, fontSize: '0.76rem', fontWeight: 700,
+                                        }}>{r.recommendation}</span>
 
-                                    <span style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
-                                </button>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
+                                    </button>
+
+                                    {/* Delete button — sibling, not overlapping */}
+                                    <button
+                                        id={`report-delete-${i}`}
+                                        onClick={() => deleteReport(r.id)}
+                                        disabled={deletingId === r.id}
+                                        title="Delete report"
+                                        style={{
+                                            flexShrink: 0, margin: '0 14px',
+                                            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+                                            borderRadius: 8, padding: '7px 10px', cursor: 'pointer',
+                                            color: '#ef4444', fontSize: '1rem', lineHeight: 1,
+                                            transition: 'var(--transition)',
+                                            opacity: deletingId === r.id ? 0.5 : 1,
+                                        }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.2)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
+                                    >
+                                        {deletingId === r.id ? '…' : '🗑️'}
+                                    </button>
+                                </div>
 
                                 {/* Expanded detail */}
                                 {open && (

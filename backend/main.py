@@ -394,6 +394,35 @@ async def delete_session(session_id: str):
     return {"message": "ok"}
 
 
+# ── Delete Report ─────────────────────────────────────────────────
+@app.delete("/api/report/{report_id}")
+async def delete_report(
+    report_id: str,
+    authorization: str = Header(None),
+):
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    jwt = authorization.split(" ", 1)[1]
+    try:
+        user_resp = supabase_client.auth.get_user(jwt)
+        user_id = user_resp.user.id
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+    try:
+        supabase_client.table("interview_reports") \
+            .delete() \
+            .eq("id", report_id) \
+            .eq("user_id", user_id) \
+            .execute()
+        return {"message": "deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Save Report ───────────────────────────────────────────────────
 class SaveReportRequest(BaseModel):
     role: str

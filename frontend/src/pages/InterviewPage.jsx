@@ -22,6 +22,8 @@ export default function InterviewPage({ initialData, onEnd }) {
     const nextPlayOrderRef = useRef(0)
     const isPlayingRef = useRef(false)
     const streamingDoneRef = useRef(false)
+    const pendingTextRef = useRef('')       // buffer text until audio starts
+    const audioStartedRef = useRef(false)  // true once first chunk plays
 
     // Mic
     const mediaRecorderRef = useRef(null)
@@ -54,19 +56,36 @@ export default function InterviewPage({ initialData, onEnd }) {
         setStatus('ai_speaking')
 
         const audio = new Audio(item.url)
-        audio.oncanplaythrough = () => audio.play().catch(() => { })
+        audio.oncanplaythrough = () => {
+            // Reveal buffered text exactly when browser is ready to play audio
+            if (!audioStartedRef.current) {
+                audioStartedRef.current = true
+                setMessages(prev => prev.map(m =>
+                    m.streaming ? { ...m, text: pendingTextRef.current } : m
+                ))
+            }
+            audio.play().catch(() => { })
+        }
         audio.onended = () => {
             URL.revokeObjectURL(item.url)
             isPlayingRef.current = false
             if (audioQueueRef.current.length > 0) {
                 playNextInQueue()
             } else if (streamingDoneRef.current) {
+                // Clear the streaming flag so this bubble isn't treated as
+                // "active" if another question starts streaming later
+                setMessages(prev => prev.map(m =>
+                    m.streaming ? { ...m, streaming: false } : m
+                ))
                 setStatus('idle')
             }
         }
         audio.onerror = () => {
             isPlayingRef.current = false
             if (streamingDoneRef.current && audioQueueRef.current.length === 0) {
+                setMessages(prev => prev.map(m =>
+                    m.streaming ? { ...m, streaming: false } : m
+                ))
                 setStatus('idle')
             } else {
                 playNextInQueue()
@@ -169,6 +188,8 @@ export default function InterviewPage({ initialData, onEnd }) {
         nextPlayOrderRef.current = 0
         isPlayingRef.current = false
         streamingDoneRef.current = false
+        pendingTextRef.current = ''
+        audioStartedRef.current = false
         setStatus('processing')
 
         // Add empty streaming bubble
@@ -204,9 +225,13 @@ export default function InterviewPage({ initialData, onEnd }) {
                     switch (payload.type) {
                         case 'text':
                             fullText += payload.content
-                            setMessages(prev => prev.map(m =>
-                                m.streaming ? { ...m, text: fullText } : m
-                            ))
+                            // Buffer text — only show it once audio starts playing
+                            pendingTextRef.current = fullText
+                            if (audioStartedRef.current) {
+                                setMessages(prev => prev.map(m =>
+                                    m.streaming ? { ...m, text: fullText } : m
+                                ))
+                            }
                             break
 
                         case 'audio':
@@ -216,13 +241,18 @@ export default function InterviewPage({ initialData, onEnd }) {
 
                         case 'done':
                             setQuestionCount(payload.question_count)
-                            setMessages(prev => prev.map(m =>
-                                m.streaming ? { role: 'ai', text: fullText } : m
-                            ))
                             streamingDoneRef.current = true
-                            // If no audio playing / queued, go idle
+                            // If no audio ever arrived, reveal text now
                             if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
+                                setMessages(prev => prev.map(m =>
+                                    m.streaming ? { role: 'ai', text: fullText } : m
+                                ))
                                 setStatus('idle')
+                            } else {
+                                // Audio will finalize the message bubble when it ends
+                                setMessages(prev => prev.map(m =>
+                                    m.streaming ? { ...m, text: fullText } : m
+                                ))
                             }
                             break
 
