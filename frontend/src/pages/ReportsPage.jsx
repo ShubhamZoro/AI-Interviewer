@@ -50,6 +50,32 @@ export default function ReportsPage({ onBack }) {
         setDeletingId(null)
     }
 
+    const [renamingId, setRenamingId] = useState(null)  // id of report being renamed
+    const [renameVal, setRenameVal] = useState('')
+
+    const startRename = (r, e) => {
+        e.stopPropagation()
+        setRenamingId(r.id)
+        setRenameVal(r.name || '')
+    }
+
+    const commitRename = async (id) => {
+        const trimmed = renameVal.trim()
+        if (!trimmed) { setRenamingId(null); return }
+        try {
+            const token = session?.access_token
+            const res = await fetch(`${API_URL}/api/report/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ name: trimmed }),
+            })
+            if (res.ok) {
+                setReports(prev => prev.map(r => r.id === id ? { ...r, name: trimmed } : r))
+            }
+        } catch (_) { }
+        setRenamingId(null)
+    }
+
     const formatDate = iso => {
         const d = new Date(iso)
         return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -147,11 +173,46 @@ export default function ReportsPage({ onBack }) {
 
                                         {/* Main info */}
                                         <div style={{ flex: 1, textAlign: 'left', minWidth: 120 }}>
-                                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: 3 }}>
-                                                {r.role}
+                                            {/* Report name — click pencil to rename */}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                                                {renamingId === r.id ? (
+                                                    <input
+                                                        autoFocus
+                                                        value={renameVal}
+                                                        onChange={e => setRenameVal(e.target.value)}
+                                                        onBlur={() => commitRename(r.id)}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') commitRename(r.id)
+                                                            if (e.key === 'Escape') setRenamingId(null)
+                                                        }}
+                                                        onClick={e => e.stopPropagation()}
+                                                        style={{
+                                                            background: 'rgba(255,255,255,0.06)',
+                                                            border: '1px solid rgba(167,139,250,0.4)',
+                                                            borderRadius: 6, padding: '2px 8px',
+                                                            color: 'var(--text-primary)', fontSize: '0.95rem',
+                                                            fontWeight: 700, outline: 'none', width: '100%',
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                                                            {r.name || r.role}
+                                                        </span>
+                                                        <button
+                                                            title="Rename"
+                                                            onClick={e => startRename(r, e)}
+                                                            style={{
+                                                                background: 'none', border: 'none', cursor: 'pointer',
+                                                                color: 'var(--text-muted)', fontSize: '0.75rem',
+                                                                padding: '0 2px', lineHeight: 1, flexShrink: 0,
+                                                            }}
+                                                        >✏️</button>
+                                                    </>
+                                                )}
                                             </div>
                                             <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                                                {r.interview_type} · {r.experience} · {formatDate(r.created_at)}
+                                                {r.role} · {r.interview_type} · {r.experience} · {formatDate(r.created_at)}
                                             </div>
                                         </div>
 

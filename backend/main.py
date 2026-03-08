@@ -350,7 +350,23 @@ async def end_interview_route(req: EndInterviewRequest):
     if gaze_warnings > 0:
         gaze_note = f"\nEye contact note: The candidate looked away from the camera {gaze_warnings} time(s) during the interview. Mention this briefly in the summary if it seems relevant to professionalism."
 
-    feedback_prompt = f"""You are evaluating a {session['interview_type']} interview for a {session['role']} position (candidate has {session['experience']} experience).{gaze_note}
+    # Early-end penalty
+    max_q   = session.get("max_questions", 5)
+    asked_q = len(qa_pairs)
+    early_note = ""
+    if asked_q < max_q:
+        completion_pct = round((asked_q / max_q) * 100)
+        early_note = f"""
+
+IMPORTANT — EARLY TERMINATION PENALTY: The candidate ended the interview after only {asked_q} of {max_q} planned questions ({completion_pct}% completion). \
+This is a significant red flag. Apply the following mandatory penalties:
+- Reduce EVERY individual question score by 1–3 points compared to what you would normally give.
+- The overall_score must be reduced by at least {min(30, 100 - completion_pct)} points compared to a full interview of equal quality.
+- Downgrade the grade by at least one letter compared to what the answers alone would merit.
+- The recommendation must be at most "Maybe" (never "Yes" or "Strong Yes").
+- The summary must explicitly mention that the candidate left the interview early."""
+
+    feedback_prompt = f"""You are evaluating a {session['interview_type']} interview for a {session['role']} position (candidate has {session['experience']} experience).{gaze_note}{early_note}
 
 Interview transcript:
 {transcript_text}
@@ -419,6 +435,40 @@ async def delete_report(
             .eq("user_id", user_id) \
             .execute()
         return {"message": "deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Rename Report ────────────────────────────────────────────────
+class RenameReportRequest(BaseModel):
+    name: str
+
+@app.patch("/api/report/{report_id}")
+async def rename_report(
+    report_id: str,
+    body: RenameReportRequest,
+    authorization: str = Header(None),
+):
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    jwt = authorization.split(" ", 1)[1]
+    try:
+        user_resp = supabase_client.auth.get_user(jwt)
+        user_id = user_resp.user.id
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+    name = body.name.strip()[:100] or "Interview"
+    try:
+        supabase_client.table("interview_reports") \
+            .update({"name": name}) \
+            .eq("id", report_id) \
+            .eq("user_id", user_id) \
+            .execute()
+        return {"message": "renamed", "name": name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

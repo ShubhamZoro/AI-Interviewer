@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabaseClient'
 
@@ -16,31 +16,45 @@ export default function FeedbackPage({ feedback, onRestart, onViewHistory }) {
 
     // Report save state: 'saving' | 'saved' | 'error' | 'idle'
     const [saveStatus, setSaveStatus] = useState('idle')
+    const savedRef = useRef(false)  // guard against React StrictMode double-invoke
 
     useEffect(() => {
         if (!session?.user?.id || !feedback) return
+        if (savedRef.current) return   // already saved — skip second call
+        savedRef.current = true
         setSaveStatus('saving')
 
+        // Count existing reports to auto-name this one "Interview N"
         supabase
             .from('interview_reports')
-            .insert({
-                user_id: session.user.id,
-                role,
-                experience,
-                interview_type,
-                overall_score,
-                grade,
-                recommendation,
-                summary,
-                strengths,
-                improvements,
-                question_scores,
-                recommendation_reason,
-                gaze_warnings,
-            })
-            .then(({ error }) => {
-                setSaveStatus(error ? 'error' : 'saved')
-                if (error) console.error('Save report error:', error.message)
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', session.user.id)
+            .then(({ count, error: countErr }) => {
+                const reportNum = countErr ? 1 : (count ?? 0) + 1
+                const reportName = `Interview ${reportNum}`
+
+                supabase
+                    .from('interview_reports')
+                    .insert({
+                        user_id: session.user.id,
+                        name: reportName,
+                        role,
+                        experience,
+                        interview_type,
+                        overall_score,
+                        grade,
+                        recommendation,
+                        summary,
+                        strengths,
+                        improvements,
+                        question_scores,
+                        recommendation_reason,
+                        gaze_warnings,
+                    })
+                    .then(({ error }) => {
+                        setSaveStatus(error ? 'error' : 'saved')
+                        if (error) console.error('Save report error:', error.message)
+                    })
             })
     }, []) // run once on mount
 
