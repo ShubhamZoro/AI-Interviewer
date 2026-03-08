@@ -367,7 +367,7 @@ This is a significant red flag. Apply the following mandatory penalties:
 - The summary must explicitly mention that the candidate left the interview early."""
 
     feedback_prompt = f"""You are evaluating a {session['interview_type']} interview for a {session['role']} position (candidate has {session['experience']} experience).{gaze_note}{early_note}
-
+{f"Candidate's resume summary (use this to personalise ideal answers with relevant technologies/projects):{chr(10)}{session['resume_text'][:2000]}{chr(10)}" if session.get('resume_text', '').strip() else ''}
 Interview transcript:
 {transcript_text}
 
@@ -383,8 +383,8 @@ Return ONLY valid JSON (no markdown) in this exact schema:
       "question": "<full question text>",
       "answer": "<candidate's full answer, do not truncate>",
       "score": <1-10>,
-      "feedback": "<specific constructive feedback referencing what the candidate said>",
-      "ideal_answer": "<write a full, well-structured model answer to this question as if you were the ideal candidate — include concrete examples, specific technologies or concepts where relevant, and build on anything correct the candidate said. 3-5 sentences.>"
+      "feedback": "<specific constructive feedback referencing exactly what the candidate said and what was missing>",
+      "ideal_answer": "<Write a complete, well-structured model answer (4-6 sentences). If a resume was provided, ground examples in the candidate's actual projects/stack where relevant; otherwise use concrete general examples. Cover: the core concept, a real-world example, any important trade-offs, and what a senior engineer would add.>"
     }}
   ],
   "recommendation": "<Strong Yes|Yes|Maybe|No>",
@@ -395,7 +395,7 @@ Return ONLY valid JSON (no markdown) in this exact schema:
         model="gpt-4o",
         messages=[{"role": "user", "content": feedback_prompt}],
         temperature=0.3,
-        max_tokens=2500,
+        max_tokens=4000,
         response_format={"type": "json_object"},
     )
 

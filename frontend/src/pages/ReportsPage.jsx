@@ -4,6 +4,76 @@ import { useAuth } from '../context/AuthContext'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Per-question expandable card with answer + feedback + ideal answer
+function QuestionAccordion({ qs }) {
+    const [openQ, setOpenQ] = useState(null)
+    return (
+        <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 10 }}>
+                📊 Question Breakdown
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {qs.map((q, j) => {
+                    const pct = (q.score / 10) * 100
+                    const col = pct >= 70 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444'
+                    const qOpen = openQ === j
+                    return (
+                        <div key={j} style={{
+                            background: qOpen ? 'rgba(124,58,237,0.05)' : 'rgba(255,255,255,0.02)',
+                            border: `1px solid ${qOpen ? 'rgba(167,139,250,0.2)' : 'var(--border)'}`,
+                            borderRadius: 10, overflow: 'hidden',
+                        }}>
+                            <button
+                                onClick={() => setOpenQ(qOpen ? null : j)}
+                                style={{
+                                    width: '100%', background: 'none', border: 'none',
+                                    padding: '11px 14px', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+                                }}
+                            >
+                                <span style={{
+                                    flexShrink: 0, fontSize: '0.78rem', fontWeight: 800,
+                                    color: col, background: `${col}18`, border: `1px solid ${col}44`,
+                                    padding: '2px 9px', borderRadius: 99,
+                                }}>{q.score}/10</span>
+                                <span style={{ flex: 1, fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.4 }}>
+                                    Q{j + 1}: {q.question}
+                                </span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0 }}>{qOpen ? '▲' : '▼'}</span>
+                            </button>
+                            <div className="progress-bar-track" style={{ margin: '0 14px 10px' }}>
+                                <div className="progress-bar-fill" style={{ width: `${pct}%`, background: `linear-gradient(90deg,${col}88,${col})` }} />
+                            </div>
+                            {qOpen && (
+                                <div className="animate-fade-in" style={{ padding: '4px 14px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    {q.answer && (
+                                        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '10px 12px' }}>
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 5 }}>👤 Your Answer</div>
+                                            <p style={{ fontSize: '0.84rem', color: 'rgba(241,240,255,0.8)', lineHeight: 1.6, margin: 0 }}>{q.answer}</p>
+                                        </div>
+                                    )}
+                                    {q.feedback && (
+                                        <div style={{ background: `${col}0e`, border: `1px solid ${col}28`, borderRadius: 8, padding: '10px 12px' }}>
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: col, marginBottom: 5 }}>💬 Feedback</div>
+                                            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{q.feedback}</p>
+                                        </div>
+                                    )}
+                                    {q.ideal_answer && (
+                                        <div style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.22)', borderRadius: 8, padding: '10px 12px' }}>
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#a78bfa', marginBottom: 5 }}>📝 Model Answer</div>
+                                            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{q.ideal_answer}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
+
 export default function ReportsPage({ onBack }) {
     const { session } = useAuth()
     const [reports, setReports] = useState([])
@@ -313,44 +383,8 @@ export default function ReportsPage({ onBack }) {
                                         )}
 
                                         {/* Q&A accordion */}
-                                        {qs.length > 0 && (
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 10 }}>
-                                                    📊 Question Breakdown
-                                                </div>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                                    {qs.map((q, j) => {
-                                                        const pct = (q.score / 10) * 100
-                                                        const col = pct >= 70 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444'
-                                                        return (
-                                                            <div key={j} style={{
-                                                                background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-                                                                borderRadius: 10, padding: '12px 14px',
-                                                            }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                                                    <span style={{
-                                                                        flexShrink: 0, fontSize: '0.78rem', fontWeight: 800,
-                                                                        color: col, background: `${col}18`, border: `1px solid ${col}44`,
-                                                                        padding: '2px 9px', borderRadius: 99,
-                                                                    }}>{q.score}/10</span>
-                                                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.4 }}>
-                                                                        Q{j + 1}: {q.question}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="progress-bar-track" style={{ marginBottom: 10 }}>
-                                                                    <div className="progress-bar-fill" style={{ width: `${pct}%`, background: `linear-gradient(90deg,${col}88,${col})` }} />
-                                                                </div>
-                                                                {q.feedback && (
-                                                                    <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-                                                                        💬 {q.feedback}
-                                                                    </p>
-                                                                )}
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
+                                        {qs.length > 0 && <QuestionAccordion qs={qs} />}
+
 
                                         {/* Recommendation reason */}
                                         {r.recommendation_reason && (
