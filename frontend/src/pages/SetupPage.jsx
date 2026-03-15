@@ -32,6 +32,7 @@ export default function SetupPage({ onStart }) {
     const [resumeFile, setResumeFile] = useState(null)
     const [showOptional, setShowOptional] = useState(false)
     const [numQuestions, setNumQuestions] = useState(5)
+    const [timedMode, setTimedMode] = useState(true)   // AI decides time per question
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const fileInputRef = useRef(null)
@@ -63,7 +64,7 @@ export default function SetupPage({ onStart }) {
             })
             if (!res.ok) throw new Error(await res.text())
             const data = await res.json()
-            onStart({ ...data, role: finalRole.trim(), experience, interview_type: interviewType })
+            onStart({ ...data, role: finalRole.trim(), experience, interview_type: interviewType, timed_mode: timedMode })
         } catch (err) {
             setError(err.message || 'Failed to start. Check backend & API key.')
         } finally {
@@ -181,6 +182,40 @@ export default function SetupPage({ onStart }) {
                     </p>
                 </div>
 
+                {/* Timed Mode toggle */}
+                <div className="form-group" style={{ marginBottom: 20 }}>
+                    <label className="form-label">Timed Mode</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
+                        <button
+                            onClick={() => setTimedMode(v => !v)}
+                            style={{
+                                position: 'relative', width: 48, height: 26, borderRadius: 99,
+                                border: 'none', cursor: 'pointer', transition: 'background 0.3s',
+                                background: timedMode
+                                    ? 'linear-gradient(135deg,#7c3aed,#a78bfa)'
+                                    : 'rgba(255,255,255,0.1)',
+                                flexShrink: 0,
+                            }}
+                        >
+                            <span style={{
+                                position: 'absolute', top: 3,
+                                left: timedMode ? 26 : 4,
+                                width: 20, height: 20, borderRadius: '50%',
+                                background: '#fff', transition: 'left 0.25s',
+                                boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                            }} />
+                        </button>
+                        <div>
+                            <div style={{ fontSize: '0.86rem', color: timedMode ? 'var(--accent-secondary)' : 'var(--text-secondary)', fontWeight: 600 }}>
+                                {timedMode ? 'On — AI sets time per question' : 'Off — no time limit'}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                Each question gets a different limit based on complexity (90 – 240 s)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Optional Context Toggle */}
                 <button
                     onClick={() => setShowOptional(v => !v)}
@@ -289,7 +324,7 @@ export default function SetupPage({ onStart }) {
                 </button>
 
                 <p style={{ textAlign: 'center', marginTop: 14, color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                    🎙️ Allow mic &amp; camera · {numQuestions} questions · always starts with self-intro
+                    🎙️ Allow mic &amp; camera · {numQuestions} questions · {timedMode ? 'AI-timed per question' : 'no time limit'}
                 </p>
             </div>
         </div>

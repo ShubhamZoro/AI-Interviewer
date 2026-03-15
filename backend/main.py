@@ -113,6 +113,47 @@ def build_system_prompt(role, experience, interview_type,
     )
 
 
+def estimate_time_limit(question_text: str, interview_type: str) -> int:
+    """Return seconds the candidate should have to answer this question."""
+    words = len(question_text.split())
+    q_lower = question_text.lower()
+
+    # Introduction question — always 90 s
+    if any(k in q_lower for k in ("introduce yourself", "tell me about yourself", "background")):
+        return 90
+
+    # Base time by interview type
+    if interview_type == "behavioral":
+        base = 150  # STAR answers need time
+    elif interview_type == "technical":
+        base = 120  # think-then-explain
+    else:  # mixed
+        base = 120
+
+    # Longer / more complex questions deserve more time
+    if words > 40:
+        base += 30
+    if words > 70:
+        base += 30
+
+    # System design / architecture keywords
+    if any(k in q_lower for k in ("design", "architect", "scale", "system", "distributed")):
+        base = max(base, 180)
+
+    return base
+
+
+def ideal_answer_guidance(time_limit_seconds: int) -> str:
+    """Return a HARD word-count rule for the ideal_answer for this question."""
+    if time_limit_seconds <= 90:
+        # ~130 wpm speaking rate → 90 s ≈ 195 words spoken; ideal answer mirrors conciseness
+        return "MAXIMUM 50 words (2 sentences). This was a brief intro/short-answer slot — be succinct."
+    elif time_limit_seconds <= 120:
+        return "50–90 words (3–4 sentences). Explain the concept, give one concrete example, and name one trade-off."
+    elif time_limit_seconds <= 150:
+        return "90–140 words (4–6 sentences, STAR structure). Include Situation, your approach, the result, and one lesson."
+    else:
+        return "140–220 words (6–9 sentences). Cover the problem space, architecture decisions, key trade-offs, scalability, and what a senior engineer would flag."
 # ─── Routes ──────────────────────────────────────────────────────
 
 @app.get("/")
@@ -178,6 +219,7 @@ async def start_interview(
         "question_index": 0,
         "question_count": 1,
         "num_questions": max(1, min(15, num_questions)),
+        "time_limit_seconds": estimate_time_limit(first_question, interview_type),
     })
 
 
@@ -316,7 +358,8 @@ async def respond_stream(req: RespondRequest):
             except Exception:
                 pass
 
-        yield f"data: {json.dumps({'type': 'done', 'question_count': session['question_count']})}\n\n"
+        time_limit = estimate_time_limit(full_text, session["interview_type"])
+        yield f"data: {json.dumps({'type': 'done', 'question_count': session['question_count'], 'time_limit_seconds': time_limit})}\n\n"
 
     return StreamingResponse(
         generate(),
@@ -366,11 +409,39 @@ This is a significant red flag. Apply the following mandatory penalties:
 - The recommendation must be at most "Maybe" (never "Yes" or "Strong Yes").
 - The summary must explicitly mention that the candidate left the interview early."""
 
+    # Build per-question ideal_answer rules (explicit, outside schema so GPT obeys them)
+    ideal_rules_lines = []
+    for idx, qa in enumerate(qa_pairs, start=1):
+        q_text  = qa.get("question", "")
+        tl      = estimate_time_limit(q_text, session["interview_type"])
+        rule    = ideal_answer_guidance(tl)
+        ideal_rules_lines.append(f"  Q{idx}: {rule}")
+    ideal_rules = "\n".join(ideal_rules_lines)
+
+    resume_hint = (
+        f"If a resume was provided, ground examples in the candidate's actual projects/stack.\n"
+        if session.get("resume_text", "").strip() else ""
+    )
+
+    questions_schema = ",\n".join(
+        '    {\n'
+        '      "question": "<full question text>",\n'
+        '      "answer": "<candidate\'s full answer, do not truncate>",\n'
+        '      "score": <1-10>,\n'
+        '      "feedback": "<specific constructive feedback referencing exactly what the candidate said>",\n'
+        '      "ideal_answer": "<model answer — obey the word-count rule for this question listed above>",\n'
+        '    }'
+        for _ in qa_pairs
+    )
+
     feedback_prompt = f"""You are evaluating a {session['interview_type']} interview for a {session['role']} position (candidate has {session['experience']} experience).{gaze_note}{early_note}
-{f"Candidate's resume summary (use this to personalise ideal answers with relevant technologies/projects):{chr(10)}{session['resume_text'][:2000]}{chr(10)}" if session.get('resume_text', '').strip() else ''}
+{f"Candidate's resume summary:{chr(10)}{session['resume_text'][:2000]}{chr(10)}" if session.get('resume_text', '').strip() else ''}
 Interview transcript:
 {transcript_text}
 
+IDEAL ANSWER WORD-COUNT RULES — you MUST obey these exactly, do not exceed the limit:
+{ideal_rules}
+{resume_hint}
 Return ONLY valid JSON (no markdown) in this exact schema:
 {{
   "overall_score": <1-100>,
@@ -379,13 +450,7 @@ Return ONLY valid JSON (no markdown) in this exact schema:
   "strengths": ["<strength1>", "<strength2>", "<strength3>"],
   "improvements": ["<area1>", "<area2>", "<area3>"],
   "question_scores": [
-    {{
-      "question": "<full question text>",
-      "answer": "<candidate's full answer, do not truncate>",
-      "score": <1-10>,
-      "feedback": "<specific constructive feedback referencing exactly what the candidate said and what was missing>",
-      "ideal_answer": "<Write a complete, well-structured model answer (4-6 sentences). If a resume was provided, ground examples in the candidate's actual projects/stack where relevant; otherwise use concrete general examples. Cover: the core concept, a real-world example, any important trade-offs, and what a senior engineer would add.>"
-    }}
+{questions_schema}
   ],
   "recommendation": "<Strong Yes|Yes|Maybe|No>",
   "recommendation_reason": "<1-2 sentence reason>"

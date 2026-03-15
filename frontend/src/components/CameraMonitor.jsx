@@ -116,7 +116,7 @@ export default function CameraMonitor({ onWarning }) {
     return (
         <div style={{
             position: 'relative',
-            width: 148, height: 110,
+            width: 110, height: 82,
             borderRadius: 10,
             overflow: 'hidden',
             border: `2px solid ${borderColor}`,

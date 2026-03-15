@@ -8,19 +8,37 @@ An AI-powered mock interview platform — sign in with Google, get interviewed b
 |---------|---------|
 | 🔐 **Google Auth** | Sign in with Google via Supabase OAuth — sessions persist across visits |
 | 📋 **Interview History** | All past reports saved to your account, viewable anytime |
-| 🎙️ **Voice Recording** | Press mic, speak your answer, press stop |
+| 🎙️ **Voice Recording** | Small mic button below the chat — press to speak, press to stop |
 | 🔊 **Streaming AI Voice** | TTS plays sentence-by-sentence as text streams in (no waiting) |
-| 📷 **Camera Gaze Monitor** | Live webcam with TF.js / MediaPipe face detection — flags if you look away |
-| 💬 **Chat Transcript** | Real-time streaming chat with blinking cursor while AI types |
+| 📷 **Camera Gaze Monitor** | Compact fixed overlay (bottom-right) — TF.js / MediaPipe flags look-aways without blocking the UI |
+| 💬 **Full-Height Chat** | Questions and answers fill the entire viewport height; sticky top bar keeps Q count, timer, and status always visible |
 | 🙋 **Always Intro First** | Every interview opens with a self-introduction prompt |
 | 📄 **Resume Upload** | Upload PDF or .txt — AI tailors questions to your experience |
 | 📋 **Job Description** | Paste the JD — AI aligns questions to the role requirements |
 | 🔢 **Custom Question Count** | Slider (1–15) to choose how many questions you want |
+| ⏱️ **Timed Mode** | AI sets a per-question time limit; countdown bar shown in the sticky top bar |
 | 🎯 **3 Interview Types** | Technical, Behavioral, Mixed |
 | 📊 **Detailed Feedback** | Score (1–100), grade, strengths, improvements + per-question accordion |
 | 👤 **Your Full Answer** | Each question shows exactly what you said |
 | 📝 **Model Answer** | GPT writes a complete example answer you can learn from |
 | 👁️ **Look-Away Counter** | Tracks how many times you were flagged during the session |
+
+## 🖥️ Interview Page Layout
+
+```
+┌── 🤖 Role  exp · type │ Q 2/5 ████░ │ 🎙️ Your turn │ ⏱ ███ 84s │ End Now ──┐  ← sticky
+│                                                                               │
+│                  Full-height chat (questions & answers)                       │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+  ▒▒▒▒▒▒▒ waveform ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒  🎙 38px
+                                                          📷 CAM (fixed corner)
+```
+
+- **Sticky top bar** — role name, Q count badge, progress bar, status, countdown timer and End Now all in one row; always visible as chat grows
+- **Full-width chat** — uses `calc(100vh − 220px)` height, scrolls internally
+- **Bottom strip** — slim waveform visualizer + compact mic button (38 px), never obscures chat
+- **Camera overlay** — 110 × 82 px fixed to bottom-right; no layout impact; `onWarning` is memoized so the feed never flickers
 
 ## 🧰 Tech Stack
 
@@ -53,11 +71,11 @@ AI_Interviewer/
     │   ├── pages/
     │   │   ├── LoginPage.jsx          # Full-screen Google sign-in
     │   │   ├── SetupPage.jsx          # Role, experience, type, question count, resume/JD
-    │   │   ├── InterviewPage.jsx      # Recording, streaming, camera monitor
+    │   │   ├── InterviewPage.jsx      # Sticky top bar, full-height chat, waveform strip, camera overlay
     │   │   ├── FeedbackPage.jsx       # Accordion breakdown + auto-saves to Supabase
     │   │   └── ReportsPage.jsx        # Past interview history
     │   ├── components/
-    │   │   ├── CameraMonitor.jsx
+    │   │   ├── CameraMonitor.jsx      # Compact 110×82 px overlay, memoized onWarning
     │   │   ├── WaveformVisualizer.jsx
     │   │   └── MessageBubble.jsx
     │   ├── App.jsx                    # Auth guard + sticky header
@@ -148,12 +166,13 @@ Setup Page — role, experience, interview type, question count, resume/JD
 POST /api/start-interview  →  GPT-4o-mini generates intro question + pre-generates TTS
   ▼
 Interview Loop
+  │  Sticky bar: Q count · status · timer always visible
   │  🎙️ → MediaRecorder → POST /api/transcribe → Whisper transcript
   │  POST /api/respond-stream (SSE)
-  │    ├── {type:"text"}  → live streaming chat bubble
+  │    ├── {type:"text"}  → live streaming chat bubble (full-width)
   │    ├── asyncio TTS tasks run concurrently per sentence
   │    └── {type:"audio"} → base64 MP3 played inline
-  │  Camera: TF.js checks gaze every 1.5s
+  │  Camera overlay: TF.js checks gaze every 1.5s (memoized, no flicker)
   ▼
 POST /api/end-interview → GPT-4o evaluates full transcript
   ▼
